@@ -1,0 +1,100 @@
+#include <iostream>
+#include <vector>
+#include <queue>
+#include <ctime>
+#include <cstdlib>
+#include <omp.h>
+
+using namespace std;
+
+void parallelBFS(const vector< vector<int> >& graph, int start) {
+    int n = graph.size();
+    vector<bool> visited(n, false);
+
+    vector<int> frontier;
+    frontier.push_back(start);
+    visited[start] = true;
+
+    while (!frontier.empty()) {
+        vector<int> next_frontier;
+
+        #pragma omp parallel
+        {
+            vector<int> local_frontier;
+
+            #pragma omp for nowait schedule(dynamic)
+            for (int i = 0; i < (int)frontier.size(); ++i) {
+                int u = frontier[i];
+
+                for (int j = 0; j < (int)graph[u].size(); ++j) {
+                    int v = graph[u][j];
+                    bool needVisit = false;
+
+                    #pragma omp critical
+                    {
+                        if (!visited[v]) {
+                            visited[v] = true;
+                            needVisit = true;
+                        }
+                    }
+
+                    if (needVisit)
+                        local_frontier.push_back(v);
+                }
+            }
+
+            #pragma omp critical
+            next_frontier.insert(next_frontier.end(), local_frontier.begin(), local_frontier.end());
+        }
+
+        frontier = next_frontier;
+    }
+
+    // Output visited nodes
+    cout << "Visited nodes from node " << start << ":" << endl;
+    for (int i = 0; i < n; ++i)
+        if (visited[i]) cout << i << " ";
+    cout << endl;
+}
+
+int main() {
+    int n, m;
+    cout << "Enter number of nodes: ";
+    cin >> n;
+    cout << "Enter number of edges: ";
+    cin >> m;
+
+    vector< vector<int> > graph(n);
+
+    srand(time(NULL));
+    int edges_added = 0;
+    while (edges_added < m) {
+        int u = rand() % n;
+        int v = rand() % n;
+
+        // Avoid self-loops and duplicate edges
+        if (u != v) {
+            bool exists = false;
+            for (int j = 0; j < graph[u].size(); ++j) {
+                if (graph[u][j] == v) {
+                    exists = true;
+                    break;
+                }
+            }
+
+            if (!exists) {
+                graph[u].push_back(v);
+                graph[v].push_back(u); // Undirected graph
+                edges_added++;
+            }
+        }
+    }
+
+    int startNode;
+    cout << "Enter starting node for BFS (0 to " << n - 1 << "): ";
+    cin >> startNode;
+
+    parallelBFS(graph, startNode);
+
+    return 0;
+}
